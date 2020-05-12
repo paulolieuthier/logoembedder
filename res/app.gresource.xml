@@ -1,0 +1,5 @@
+<gresources>
+    <gresource prefix="/com/paulolieuthier/logoembedder">
+        <file preprocess="xml-stripblanks">app.ui</file>
+    </gresource>
+</gresources>

@@ -1,0 +1,12 @@
+[package]
+name = "logoembedder"
+version = "0.1.0"
+authors = ["Paulo Lieuthier <paulolieuthier@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+glib = "0.9.3"
+gtk = { version = "0.8.1", features = ["v3_16"] }
+gtk_resources = "0.1.5"
+gio = { version = "", features = ["v2_44"] }
+gstreamer = "0.15"
