@@ -40,9 +40,10 @@ enum Corner {
     BottomRight,
 }
 
-fn main() {
+fn main() -> std::io::Result<()> {
     if std::env::var_os("GST_PLUGIN_PATH").is_none() {
-        std::env::set_var("GST_PLUGIN_PATH", "./gstreamer-1.0");
+        std::env::set_var("GST_PLUGIN_PATH", &format!("{}/gstreamer-1.0", std::env::current_dir()?.display()));
+        println!("GStreamer plugins path: {}", std::env::var("GST_PLUGIN_PATH").unwrap());
     }
 
     gstreamer::init().unwrap();
@@ -80,6 +81,7 @@ fn main() {
     }));
 
     application.run(&[]);
+    Ok(())
 }
 
 fn gui_data(res: &AppResource) -> Option<(PathBuf, Corner, PathBuf, PathBuf)> {
