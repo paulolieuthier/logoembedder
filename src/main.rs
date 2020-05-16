@@ -42,7 +42,9 @@ enum Corner {
 
 fn main() -> std::io::Result<()> {
     if std::env::var_os("GST_PLUGIN_PATH").is_none() {
-        std::env::set_var("GST_PLUGIN_PATH", &format!("{}/gstreamer-1.0", std::env::current_dir()?.display()));
+        let mut plugins_path = std::env::current_dir()?;
+        plugins_path.push("gstreamer-1.0");
+        std::env::set_var("GST_PLUGIN_PATH", &format!("{}", plugins_path.display()));
         println!("GStreamer plugins path: {}", std::env::var("GST_PLUGIN_PATH").unwrap());
     }
 
