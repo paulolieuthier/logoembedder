@@ -122,8 +122,13 @@ fn process(logo_path: PathBuf, corner: Corner, video_path: PathBuf, output_dir: 
         Corner::BottomRight => { logo.set_property("offset-x", &-20)?; logo.set_property("offset-y", &-20)?; }
     }
 
+    let original_name = video_path.clone().with_extension("");
+    let new_file_name = format!("{}-com-logo", original_name.file_name().unwrap().to_str().unwrap());
+    let mut new_file = output_dir.clone();
+    new_file.push(new_file_name);
+    new_file.set_extension("mp4");
     let output = pipeline.get_by_name("output").unwrap();
-    output.set_property("location", &format!("{}/video-com-logo.mp4", output_dir.to_str().unwrap()))?;
+    output.set_property("location", &format!("{}", new_file.display()))?;
 
     let bus = pipeline.get_bus().unwrap();
 
