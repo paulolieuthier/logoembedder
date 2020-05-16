@@ -25,7 +25,7 @@ struct AppResource {
     execute_btn: gtk::Button,
     input_error_dialog: gtk::Dialog,
     input_error_dialog_close_button: gtk::Button,
-    error_dialog: gtk::Dialog,
+    error_dialog: gtk::MessageDialog,
     error_dialog_close_button: gtk::Button,
     final_dialog: gtk::Dialog,
     final_dialog_close_button: gtk::Button,
@@ -58,6 +58,7 @@ fn main() {
             if let Some((logo, corner, video, output)) = gui_data(&res) {
                 if let Err(err) = process(logo, corner, video, output) {
                     res.error_dialog_close_button.connect_clicked(clone!(@weak res => move |_| res.error_dialog.hide()));
+                    res.error_dialog.set_property_secondary_text(Some(&format!("{}", err)));
                     res.error_dialog.show();
                     println!("{}", err);
                 } else {
