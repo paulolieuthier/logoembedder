@@ -39,6 +39,10 @@ enum Corner {
 }
 
 fn main() {
+    if std::env::var_os("GST_PLUGIN_PATH").is_none() {
+        std::env::set_var("GST_PLUGIN_PATH", "./gstreamer-1.0");
+    }
+
     gstreamer::init().unwrap();
     gtk::init().unwrap();
 
