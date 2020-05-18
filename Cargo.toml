@@ -10,3 +10,4 @@ gtk = { version = "0.8.1", features = ["v3_16"] }
 gtk_resources = "0.1.5"
 gio = { version = "", features = ["v2_44"] }
 gstreamer = "0.15"
+futures = "0.3"

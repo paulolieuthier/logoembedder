@@ -7,8 +7,9 @@ use glib::clone;
 use gtk::prelude::*;
 use gio::prelude::*;
 use gstreamer::prelude::*;
+use futures::prelude::*;
 
-use gtk::{Application};
+use gtk::Application;
 use gtk_resources::UIResource;
 
 static PIPELINE_STR: &str = "filesrc name=input ! decodebin name=dec ! gdkpixbufoverlay name=logo ! videoscale ! x264enc ! queue ! mp4mux name=mux ! filesink name=output dec. ! audioconvert ! lamemp3enc ! queue ! mux.";
@@ -25,6 +26,7 @@ struct AppResource {
     video_chooser: gtk::FileChooserButton,
     output_chooser: gtk::FileChooserButton,
     execute_btn: gtk::Button,
+    loading_spinner: gtk::Spinner,
     input_error_dialog: gtk::Dialog,
     input_error_dialog_close_button: gtk::Button,
     error_dialog: gtk::MessageDialog,
@@ -65,7 +67,12 @@ fn main() -> std::io::Result<()> {
         res.window.set_application(Some(app));
         res.execute_btn.connect_clicked(clone!(@weak res => move |_| {
             if let Some((logo, corner, video, output)) = gui_data(&res) {
-                if let Err(err) = process(logo, corner, video, output) {
+                res.execute_btn.set_sensitive(false);
+                res.loading_spinner.set_property_active(true);
+
+                let result = glib::MainContext::default().block_on(process(logo, corner, video, output));
+
+                if let Err(err) = result {
                     res.error_dialog_close_button.connect_clicked(clone!(@weak res => move |_| res.error_dialog.hide()));
                     res.error_dialog.set_property_secondary_text(Some(&format!("{}", err)));
                     res.error_dialog.show();
@@ -74,6 +81,9 @@ fn main() -> std::io::Result<()> {
                     res.final_dialog_close_button.connect_clicked(clone!(@weak res => move |_| res.final_dialog.hide()));
                     res.final_dialog.show();
                 }
+
+                res.execute_btn.set_sensitive(true);
+                res.loading_spinner.set_property_active(false);
             } else {
                 res.input_error_dialog_close_button.connect_clicked(clone!(@weak res => move |_| res.input_error_dialog.hide()));
                 res.input_error_dialog.show();
@@ -105,7 +115,7 @@ fn gui_data(res: &AppResource) -> Option<(PathBuf, Corner, PathBuf, PathBuf)> {
     Some((logo, corner, video, output))
 }
 
-fn process(logo_path: PathBuf, corner: Corner, video_path: PathBuf, output_dir: PathBuf) -> Result<(), Box<dyn Error>> {
+async fn process(logo_path: PathBuf, corner: Corner, video_path: PathBuf, output_dir: PathBuf) -> Result<(), Box<dyn Error>> {
     let pipeline = gstreamer::parse_launch(&PIPELINE_STR)?
         .downcast::<gstreamer::Pipeline>()
         .unwrap();
@@ -130,16 +140,15 @@ fn process(logo_path: PathBuf, corner: Corner, video_path: PathBuf, output_dir: 
     let output = pipeline.get_by_name("output").unwrap();
     output.set_property("location", &format!("{}", new_file.display()))?;
 
-    let bus = pipeline.get_bus().unwrap();
-
     pipeline.set_state(gstreamer::State::Playing)?;
 
-    for msg in bus.iter_timed(gstreamer::CLOCK_TIME_NONE) {
+    let mut messages = pipeline.get_bus().unwrap().stream();
+    while let Some(msg) = messages.next().await {
         match msg.view() {
             gstreamer::MessageView::Eos(..) => break,
             gstreamer::MessageView::Error(err) => return Err(Box::new(err.get_error())),
             _ => (),
-        }
+        };
     }
 
     pipeline.set_state(gstreamer::State::Null)?;
