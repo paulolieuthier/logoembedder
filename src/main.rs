@@ -24,7 +24,6 @@ struct AppResource {
     logo_topright_radio: gtk::RadioButton,
     logo_bottomright_radio: gtk::RadioButton,
     video_chooser: gtk::FileChooserButton,
-    output_chooser: gtk::FileChooserButton,
     execute_btn: gtk::Button,
     loading_spinner: gtk::Spinner,
     input_error_dialog: gtk::Dialog,
@@ -65,11 +64,11 @@ fn main() -> std::io::Result<()> {
     application.connect_activate(clone!(@weak res => move |app| {
         res.window.set_application(Some(app));
         res.execute_btn.connect_clicked(clone!(@weak res => move |_| {
-            if let Some((logo, corner, video, output)) = gui_data(&res) {
+            if let Some((logo, corner, video)) = gui_data(&res) {
                 res.execute_btn.set_sensitive(false);
                 res.loading_spinner.set_property_active(true);
 
-                let result = glib::MainContext::default().block_on(process(logo, corner, video, output));
+                let result = glib::MainContext::default().block_on(process(logo, corner, video));
 
                 if let Err(err) = result {
                     res.error_dialog_close_button.connect_clicked(clone!(@weak res => move |_| res.error_dialog.hide()));
@@ -95,10 +94,9 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-fn gui_data(res: &AppResource) -> Option<(PathBuf, Corner, PathBuf, PathBuf)> {
+fn gui_data(res: &AppResource) -> Option<(PathBuf, Corner, PathBuf)> {
     let logo = res.logo_chooser.get_filename()?;
     let video = res.video_chooser.get_filename()?;
-    let output = res.output_chooser.get_filename()?;
     let corner =
         if res.logo_bottomright_radio.get_active() {
             Corner::BottomRight
@@ -111,10 +109,10 @@ fn gui_data(res: &AppResource) -> Option<(PathBuf, Corner, PathBuf, PathBuf)> {
         } else {
             unreachable!();
         };
-    Some((logo, corner, video, output))
+    Some((logo, corner, video))
 }
 
-async fn process(logo_path: PathBuf, corner: Corner, video_path: PathBuf, output_dir: PathBuf) -> Result<(), Box<dyn Error>> {
+async fn process(logo_path: PathBuf, corner: Corner, video_path: PathBuf) -> Result<(), Box<dyn Error>> {
     let pipeline = gstreamer::parse_launch(&PIPELINE_STR)?
         .downcast::<gstreamer::Pipeline>()
         .unwrap();
@@ -133,7 +131,8 @@ async fn process(logo_path: PathBuf, corner: Corner, video_path: PathBuf, output
 
     let original_name = video_path.clone().with_extension("");
     let new_file_name = format!("{}-com-logo", original_name.file_name().unwrap().to_str().unwrap());
-    let mut new_file = output_dir.clone();
+    let mut new_file = original_name.clone();
+    new_file.pop();
     new_file.push(new_file_name);
     new_file.set_extension("mp4");
     let output = pipeline.get_by_name("output").unwrap();
