@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]
 
+use std::env;
 use std::path::PathBuf;
 use std::error::Error;
 use std::sync::Arc;
@@ -11,6 +12,7 @@ use futures::prelude::*;
 
 use gtk::Application;
 use gtk_resources::UIResource;
+use image::GenericImageView;
 
 static PIPELINE_STR: &str = "filesrc name=input ! decodebin name=dec ! gdkpixbufoverlay name=logo ! videoscale ! x264enc ! queue ! mp4mux name=mux ! filesink name=output dec. ! audioconvert ! lamemp3enc ! queue ! mux.";
 
@@ -23,6 +25,7 @@ struct AppResource {
     logo_bottomleft_radio: gtk::RadioButton,
     logo_topright_radio: gtk::RadioButton,
     logo_bottomright_radio: gtk::RadioButton,
+    logo_width_scale: gtk::Scale,
     video_chooser: gtk::FileChooserButton,
     execute_btn: gtk::Button,
     loading_spinner: gtk::Spinner,
@@ -39,6 +42,13 @@ enum Corner {
     TopRight,
     BottomLeft,
     BottomRight,
+}
+
+struct Parameters {
+    logo_path: PathBuf,
+    logo_position: Corner,
+    logo_width: f64,
+    video_path: PathBuf,
 }
 
 fn main() -> std::io::Result<()> {
@@ -64,11 +74,11 @@ fn main() -> std::io::Result<()> {
     application.connect_activate(clone!(@weak res => move |app| {
         res.window.set_application(Some(app));
         res.execute_btn.connect_clicked(clone!(@weak res => move |_| {
-            if let Some((logo, corner, video)) = gui_data(&res) {
+            if let Some(params) = gui_data(&res) {
                 res.execute_btn.set_sensitive(false);
                 res.loading_spinner.set_property_active(true);
 
-                let result = glib::MainContext::default().block_on(process(logo, corner, video));
+                let result = glib::MainContext::default().block_on(process(params));
 
                 if let Err(err) = result {
                     res.error_dialog_close_button.connect_clicked(clone!(@weak res => move |_| res.error_dialog.hide()));
@@ -94,7 +104,7 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-fn gui_data(res: &AppResource) -> Option<(PathBuf, Corner, PathBuf)> {
+fn gui_data(res: &AppResource) -> Option<Parameters> {
     let logo = res.logo_chooser.get_filename()?;
     let video = res.video_chooser.get_filename()?;
     let corner =
@@ -109,25 +119,44 @@ fn gui_data(res: &AppResource) -> Option<(PathBuf, Corner, PathBuf)> {
         } else {
             unreachable!();
         };
-    Some((logo, corner, video))
+    let width = res.logo_width_scale.get_value();
+    Some(Parameters { logo_path: logo, logo_position: corner, logo_width: width, video_path: video })
 }
 
-async fn process(logo_path: PathBuf, corner: Corner, video_path: PathBuf) -> Result<(), Box<dyn Error>> {
+async fn process(params: Parameters) -> Result<(), Box<dyn Error>> {
     let pipeline = gstreamer::parse_launch(&PIPELINE_STR)?
         .downcast::<gstreamer::Pipeline>()
         .unwrap();
+
+    let Parameters { logo_path, logo_position, logo_width, video_path } = params;
 
     let input = pipeline.get_by_name("input").unwrap();
     input.set_property("location", &video_path.to_str().unwrap())?;
 
     let logo = pipeline.get_by_name("logo").unwrap();
-    logo.set_property("location", &logo_path.to_str().unwrap())?;
-    match corner {
+
+    match logo_position {
         Corner::TopLeft => { logo.set_property("offset-x", &20)?; logo.set_property("offset-y", &20)?; }
         Corner::BottomLeft => { logo.set_property("offset-x", &20)?; logo.set_property("offset-y", &-20)?; }
         Corner::TopRight => { logo.set_property("offset-x", &-20)?; logo.set_property("offset-y", &20)?; }
         Corner::BottomRight => { logo.set_property("offset-x", &-20)?; logo.set_property("offset-y", &-20)?; }
     }
+
+    // logo size calculation
+    let logo_img = image::open(&logo_path)?;
+    let (img_width, img_height) = logo_img.dimensions();
+    let (img_width, img_height) = (img_width as f64, img_height as f64);
+    let logo_height = img_height * logo_width / img_width;
+    let (logo_width, logo_height) = (logo_width as i32, logo_height as i32);
+
+    // resizing
+    let mut resized_img = env::temp_dir();
+    resized_img.push(&format!("cfclogo-{}.png", (rand::random::<f32>() * 1000 as f32) as u32));
+    image::imageops::resize(&logo_img, logo_width as u32, logo_height as u32, image::imageops::FilterType::CatmullRom).save(&resized_img)?;
+
+    logo.set_property("overlay-width", &logo_width)?;
+    logo.set_property("overlay-height", &logo_height)?;
+    logo.set_property("location", &resized_img.to_str().unwrap())?;
 
     let original_name = video_path.clone().with_extension("");
     let new_file_name = format!("{}-com-logo", original_name.file_name().unwrap().to_str().unwrap());
